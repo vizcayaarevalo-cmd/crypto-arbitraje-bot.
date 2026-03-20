@@ -1,42 +1,64 @@
 import ccxt
 import time
-from concurrent.futures import ThreadPoolExecutor
+import os
 
 ex = ccxt.gateio()
-saldo_actual = 502.79  # Empezamos con tu racha ganadora
+saldo_actual = 746.80 
+ultimo_respaldo = 746.80
+last_check = time.time()
 
-def ejecutar_auto_trader(m):
-    global saldo_actual
+# La "Red de Pesca" Industrial
+MONEDAS = [
+    'WNCG', 'ETH', 'SOL', 'PEPE', 'GT', 'DOGE', 'XRP', 'LTC', 
+    'LINK', 'SHIB', 'ADA', 'TRX', 'AVAX', 'MATIC', 'NEAR', 
+    'FET', 'RNDR', 'TAO', 'ORDI', 'SATS', 'STX', 'PENDLE'
+]
+
+def backup_to_github(saldo):
+    print(f"\n📦 [SISTEMA] Hito de ${saldo:.2f} alcanzado. Respaldando...")
+    os.system('git add auto_trader.log monitor.py')
+    os.system(f'git commit -m "RECORD: ${saldo:.2f}"')
+    os.system('git push origin main')
+
+def scan_all():
+    global saldo_actual, ultimo_respaldo, last_check
     try:
-        # Solo operamos el triángulo de WNCG
-        tickers = ex.fetch_tickers(['BTC/USDT', 'WNCG/BTC', 'WNCG/USDT'])
-        p1 = tickers['BTC/USDT']['ask'] # USDT -> BTC
-        p2 = tickers['WNCG/BTC']['ask'] # BTC -> WNCG
-        p3 = tickers['WNCG/USDT']['bid'] # WNCG -> USDT
+        # Petición masiva de precios
+        tickers = ex.fetch_tickers([f'{m}/USDT' for m in MONEDAS] + [f'{m}/BTC' for m in MONEDAS] + ['BTC/USDT'])
+        p_btc_usdt = tickers['BTC/USDT']['ask']
         
-        final_usdt = (saldo_actual / p1 / p2) * p3
-        ganancia_neta = (final_usdt - saldo_actual) - (final_usdt * 0.002)
-        
-        if ganancia_neta > 0.01: # Si ganamos más de 1 centavo, ejecutamos
-            saldo_actual += ganancia_neta
-            log = f"🎯 [SNIPER] WNCG | Ganancia: +${ganancia_neta:.4f} | Saldo: ${saldo_actual:.2f}"
-            with open("auto_trader.log", "a") as f:
-                f.write(f"{time.strftime('%H:%M:%S')} | {log}\n")
-            print(f"\n{log}")
+        for m in MONEDAS:
+            try:
+                # USDT -> BTC -> MONEDA -> USDT
+                p_m_btc = tickers[f'{m}/BTC']['ask']
+                p_m_usdt = tickers[f'{m}/USDT']['bid']
+                
+                final = (saldo_actual / p_btc_usdt / p_m_btc) * p_m_usdt
+                neta = (final - saldo_actual) - (final * 0.002)
+
+                # Umbral de micro-ganancia (1 milésima)
+                if neta > 0.001: 
+                    saldo_actual += neta
+                    msg = f"🎯 [HIT] {m}: +${neta:.4f} | Saldo: ${saldo_actual:.2f}"
+                    print(msg)
+                    with open("auto_trader.log", "a") as f:
+                        f.write(f"{time.strftime('%H:%M:%S')} | {msg}\n")
+            except: continue
+
+        # Latido de corazón (Heartbeat)
+        if time.time() - last_check > 5:
+            print(f"💓 [SCAN] {len(MONEDAS)} mercados vigilados... Saldo: ${saldo_actual:.2f}")
+            last_check = time.time()
+
+        # Guardado de seguridad cada $5 ganados
+        if saldo_actual - ultimo_respaldo >= 5.0:
+            backup_to_github(saldo_actual)
+            ultimo_respaldo = saldo_actual
+
     except Exception as e:
-        pass
+        if "rate limit" in str(e).lower(): time.sleep(2)
 
-print("🎯 SNIPER WNCG INICIADO...")
-last_heartbeat = time.time()
-
+print(f"🚀 MOTOR DE PESCA 2.0 ACTIVADO | Saldo: ${saldo_actual}")
 while True:
-    if time.time() - last_heartbeat > 10:
-        msg = f"💓 [VIVO] Monitoreando WNCG... Saldo: ${saldo_actual:.2f}"
-        with open("auto_trader.log", "a") as f:
-            f.write(f"{time.strftime('%H:%M:%S')} | {msg}\n")
-        last_heartbeat = time.time()
-        print(".", end="", flush=True)
-    
-    # Ejecución ultra-rápida
-    ejecutar_auto_trader('WNCG')
-    time.sleep(0.5) # Pausa mínima para no banear la IP
+    scan_all()
+    time.sleep(0.01)
