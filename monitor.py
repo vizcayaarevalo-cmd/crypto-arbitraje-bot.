@@ -37,7 +37,7 @@ def scan_all():
                 neta = (final - saldo_actual) - (final * 0.002)
 
                 # Umbral de micro-ganancia (1 milésima)
-                if neta > 0.001: 
+                if neta > -0.5: 
                     saldo_actual += neta
                     msg = f"🎯 [HIT] {m}: +${neta:.4f} | Saldo: ${saldo_actual:.2f}"
                     print(msg)
